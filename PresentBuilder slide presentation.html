@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>HTML PPT Ultimate++</title>
+
+<style>
+body { margin:0; font-family:Arial; }
+
+/* HOME */
+#home { padding:20px; }
+.file {
+  padding:15px;
+  background:#eee;
+  margin-bottom:10px;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+}
+#addBtn { font-size:30px; }
+
+/* APP */
+#app { display:none; height:100vh; }
+
+#sidebar {
+  width:200px;
+  background:#eee;
+  padding:10px;
+  overflow-y:auto;
+}
+
+#main {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+#toolbar {
+  background:#ddd;
+  padding:10px;
+}
+
+#canvas {
+  flex:1;
+  background:white;
+  position:relative;
+  overflow:hidden;
+}
+
+.thumb {
+  height:80px;
+  background:white;
+  margin-bottom:10px;
+  border:2px solid transparent;
+}
+.thumb.active { border-color:blue; }
+
+.element {
+  position:absolute;
+  padding:5px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HOME -->
+<div id="home">
+  <h1>Prezentációk</h1>
+  <div id="files"></div>
+  <button id="addBtn" onclick="createNew()">+</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div style="display:flex;height:100%;">
+    
+    <div id="sidebar"></div>
+
+    <div id="main">
+      <div id="toolbar">
+        <button onclick="addSlide()">+ Dia</button>
+        <input type="file" onchange="addImage(event)">
+        <button onclick="save()">💾</button>
+        <button onclick="renameFile()">✏️</button>
+        <button onclick="startSlideshow()">▶</button>
+        <button onclick="closeApp()">❌</button>
+      </div>
+      <div id="canvas"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let slides = [];
+let current = 0;
+let fileName = null;
+let slideIndex = 0;
+let isPresentation = false;
+
+const home = document.getElementById("home");
+const app = document.getElementById("app");
+const canvas = document.getElementById("canvas");
+const sidebar = document.getElementById("sidebar");
+const toolbar = document.getElementById("toolbar");
+
+/* HOME */
+function loadFiles() {
+  const filesDiv = document.getElementById("files");
+  filesDiv.innerHTML = "";
+
+  Object.keys(localStorage).forEach(key => {
+    const div = document.createElement("div");
+    div.className = "file";
+
+    const name = document.createElement("span");
+    name.innerText = key;
+
+    const del = document.createElement("button");
+    del.innerText = "🗑️";
+    del.onclick = (e) => {
+      e.stopPropagation();
+      localStorage.removeItem(key);
+      loadFiles();
+    };
+
+    div.appendChild(name);
+    div.appendChild(del);
+    div.onclick = () => openFile(key);
+
+    filesDiv.appendChild(div);
+  });
+}
+
+function createNew() {
+  fileName = "PPT_" + Date.now();
+  slides = [[{type:"title",title:"Cím dia",subtitle:"Alcím"}]];
+  openApp();
+}
+
+function openFile(name) {
+  fileName = name;
+  slides = JSON.parse(localStorage.getItem(name));
+  openApp();
+}
+
+/* NAV */
+function openApp() {
+  home.style.display = "none";
+  app.style.display = "block";
+  render();
+}
+
+function closeApp() {
+  app.style.display = "none";
+  home.style.display = "block";
+  loadFiles();
+}
+
+/* SAVE */
+function save() {
+  localStorage.setItem(fileName, JSON.stringify(slides));
+  alert("Mentve");
+}
+
+/* RENAME */
+function renameFile() {
+  const newName = prompt("Új név:", fileName);
+  if (!newName || newName === fileName) return;
+
+  if (localStorage.getItem(newName)) {
+    alert("Már létezik ilyen nevű PPT");
+    return;
+  }
+
+  localStorage.setItem(newName, JSON.stringify(slides));
+  localStorage.removeItem(fileName);
+  fileName = newName;
+}
+
+/* EDITOR */
+function render() {
+  canvas.innerHTML = "";
+
+  slides[current].forEach(el => {
+
+    if (el.type === "title") {
+      const h1 = document.createElement("h1");
+      h1.contentEditable = true;
+      h1.innerText = el.title;
+      h1.style.textAlign = "center";
+      h1.style.marginTop = "20%";
+      h1.oninput = () => el.title = h1.innerText;
+
+      const p = document.createElement("p");
+      p.contentEditable = true;
+      p.innerText = el.subtitle;
+      p.style.textAlign = "center";
+      p.oninput = () => el.subtitle = p.innerText;
+
+      canvas.appendChild(h1);
+      canvas.appendChild(p);
+    }
+
+    else if (el.type === "content") {
+      const h2 = document.createElement("h2");
+      h2.contentEditable = true;
+      h2.innerText = el.title;
+      h2.oninput = () => el.title = h2.innerText;
+
+      const p = document.createElement("p");
+      p.contentEditable = true;
+      p.innerText = el.text;
+      p.oninput = () => el.text = p.innerText;
+
+      canvas.appendChild(h2);
+      canvas.appendChild(p);
+    }
+
+    else {
+      const div = document.createElement("div");
+      div.className = "element";
+      div.style.left = el.x + "px";
+      div.style.top = el.y + "px";
+      div.style.width = el.w + "px";
+
+      if (el.type === "text") {
+        div.contentEditable = true;
+        div.innerHTML = el.content;
+        div.oninput = () => el.content = div.innerHTML;
+      }
+
+      if (el.type === "img") {
+        const img = document.createElement("img");
+        img.src = el.src;
+        img.style.width = "100%";
+        div.appendChild(img);
+      }
+
+      canvas.appendChild(div);
+    }
+  });
+
+  renderSidebar();
+}
+
+function renderSidebar() {
+  sidebar.innerHTML = "";
+  slides.forEach((s, i) => {
+    const t = document.createElement("div");
+    t.className = "thumb" + (i === current ? " active" : "");
+    t.onclick = () => { current = i; render(); };
+    sidebar.appendChild(t);
+  });
+}
+
+/* ACTIONS */
+function addSlide() {
+  slides.push([{type:"content",title:"Cím",text:"Szöveg"}]);
+  current = slides.length - 1;
+  render();
+}
+
+function addImage(e) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    slides[current].push({type:"img",src:ev.target.result,x:100,y:100,w:200});
+    render();
+  };
+  reader.readAsDataURL(e.target.files[0]);
+}
+
+/* PRESENTATION MODE */
+function startSlideshow() {
+  isPresentation = true;
+  slideIndex = current;
+
+  toolbar.style.display = "none";
+  sidebar.style.display = "none";
+
+  showSlide();
+}
+
+function closeSlideshow() {
+  isPresentation = false;
+
+  toolbar.style.display = "block";
+  sidebar.style.display = "block";
+
+  render();
+}
+
+function showSlide() {
+  canvas.innerHTML = "";
+
+  const s = slides[slideIndex];
+
+  s.forEach(el => {
+
+    if (el.type === "title") {
+      const h1 = document.createElement("h1");
+      h1.innerText = el.title;
+      h1.style.fontSize = "60px";
+      h1.style.textAlign = "center";
+      h1.style.marginTop = "20%";
+
+      const p = document.createElement("p");
+      p.innerText = el.subtitle;
+      p.style.fontSize = "30px";
+      p.style.textAlign = "center";
+
+      canvas.appendChild(h1);
+      canvas.appendChild(p);
+    }
+
+    else if (el.type === "content") {
+      const h2 = document.createElement("h2");
+      h2.innerText = el.title;
+      h2.style.fontSize = "50px";
+
+      const p = document.createElement("p");
+      p.innerText = el.text;
+      p.style.fontSize = "28px";
+
+      canvas.appendChild(h2);
+      canvas.appendChild(p);
+    }
+
+    else if (el.type === "text") {
+      const div = document.createElement("div");
+      div.style.position = "absolute";
+      div.style.left = el.x + "px";
+      div.style.top = el.y + "px";
+      div.style.width = el.w + "px";
+      div.style.fontSize = "28px";
+
+      div.innerHTML = el.content;
+
+      canvas.appendChild(div);
+    }
+
+    else if (el.type === "img") {
+      const img = document.createElement("img");
+      img.src = el.src;
+      img.style.maxWidth = "80%";
+      canvas.appendChild(img);
+    }
+  });
+
+  // Kilép gomb
+  const btn = document.createElement("button");
+  btn.innerText = "Kilép";
+  btn.onclick = closeSlideshow;
+
+  btn.style.position = "fixed";
+  btn.style.bottom = "20px";
+  btn.style.right = "20px";
+  btn.style.padding = "12px 20px";
+  btn.style.fontSize = "18px";
+  btn.style.border = "none";
+  btn.style.borderRadius = "10px";
+  btn.style.background = "#d33";
+  btn.style.color = "white";
+  btn.style.cursor = "pointer";
+
+  canvas.appendChild(btn);
+}
+
+/* KEYBOARD */
+document.addEventListener("keydown", (e) => {
+
+  if (e.key === "F5") {
+    e.preventDefault();
+    startSlideshow();
+  }
+
+  if (isPresentation) {
+
+    if (e.key === "ArrowRight") {
+      slideIndex = (slideIndex + 1) % slides.length;
+      showSlide();
+    }
+
+    if (e.key === "ArrowLeft") {
+      slideIndex = (slideIndex - 1 + slides.length) % slides.length;
+      showSlide();
+    }
+  }
+});
+
+/* INIT */
+loadFiles();
+</script>
+
+</body>
+</html>
